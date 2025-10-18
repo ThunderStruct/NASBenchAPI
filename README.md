@@ -4,7 +4,7 @@
 [![pypi](https://img.shields.io/badge/pypi%20package-0.1.0-lightgrey.svg)](https://pypi.org/project/nasbenchapi/) [![Platform](https://img.shields.io/badge/python-v3.8+-green)](https://github.com/ThunderStruct/NASBenchAPI) [![License](https://img.shields.io/badge/license-MIT-orange)](https://github.com/ThunderStruct/NASBenchAPI/blob/main/LICENSE) [![Read the Docs](https://readthedocs.org/projects/nasbenchapi/badge/?version=latest)](https://nasbenchapi.readthedocs.io/en/latest/)
 
 
-A unified, lightweight interface for NAS-Bench-101, 201, and 301 with optimized pickle-based data loading
+A unified, lightweight interface for NASBench-101, 201, and 301 with optimized Pickle-based datasets.
 
  
 ------------------------
@@ -17,7 +17,15 @@ A unified, lightweight interface for NAS-Bench-101, 201, and 301 with optimized 
 
 **NASBenchAPI** is a lightweight, unified interface for Neural Architecture Search benchmarks (101, 201, and 301). All NASBench datasets (originally in `.tfrecord`, `.pth`, and `.json` formats) were extracted and saved as Pickle-based files for consistency.
 
-  
+
+### Related Works
+
+
+This project is inspired by the holistic NAS Library, [NASLib](https://github.com/automl/NASLib), and the paper by [Mehta et al.](https://openreview.net/forum?id=0DLwqQLmqV).
+
+
+The primary motivation for NASBenchAPI stems from the need to integrate NASBench datasets (101, 201, 301) into custom frameworks without the significant overhead and extraneous tools introduced by more comprehensive libraries. This API provides a focused, lightweight, and unified interface specifically for that purpose.
+
 
 ### Installation
 
@@ -186,6 +194,20 @@ Detailed examples and the full API docs are [hosted on Read the Docs](https://na
 | **NAS-Bench-301** | CIFAR-10, CIFAR-100 | surrogate val/test accuracy | ~10^18 (surrogate) |
   
 
+
+## Cite
+
+If you use this library in your work, please use the following BibTeX entry:
+
+```bibtex
+@misc{nasbenchapi-2025, 
+  title={NASBenchAPI: A unified interface for NASBench datasets}, 
+  author={Shahawy, Mohamed}, 
+  year={2025}, 
+  publisher={GitHub}, 
+  howpublished={\url{https://github.com/ThunderStruct/NASBenchAPI}} 
+}
+```
 
 ## License
 
