@@ -4,17 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nasbenchapi"
-version = "0.1.0"
+version = "1.0.0"
 description = "Lightweight, unified pickle-based NASBench APIs (101/201/301) with downloader"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "NASBenchAPI Contributors" }]
 classifiers = [
-  "Programming Language :: Python :: 3",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+keywords = ["nas", "neural-architecture-search", "nasbench", "benchmark", "automl"]
 dependencies = [
   "tqdm>=4.60.0",
   "requests>=2.28.0",
@@ -28,7 +38,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://example.com/nasbenchapi"
+Homepage = "https://github.com/ThunderStruct/NASBenchAPI"
+Repository = "https://github.com/ThunderStruct/NASBenchAPI"
+Documentation = "https://github.com/ThunderStruct/NASBenchAPI/tree/main/docs"
+Issues = "https://github.com/ThunderStruct/NASBenchAPI/issues"
 
 [project.scripts]
 nasbench-download = "nasbenchapi.cli:main"

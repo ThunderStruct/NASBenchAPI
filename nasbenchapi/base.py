@@ -21,10 +21,6 @@ class NASBenchBase:
         """
         raise NotImplementedError
 
-    def close(self) -> None:
-        """Release any held resources (optional)."""
-        pass
-
     # Reproducibility
     def set_seed(self, seed: int) -> None:
         """Set global RNG seed for reproducibility.
