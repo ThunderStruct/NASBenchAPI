@@ -1,5 +1,5 @@
 """
-Unified API wrappers for NAS-Bench-101/201/301.
+Unified API wrappers for NASBench-101/201/301.
 
 This module provides wrappers around the benchmark-specific implementations 
 to expose a consistent interface across all benchmarks.

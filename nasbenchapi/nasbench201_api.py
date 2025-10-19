@@ -19,7 +19,7 @@ except ImportError:
 
 
 class NASBench201:
-    """NAS-Bench-201 API"""
+    """NASBench-201 API"""
 
     # NB201 operations for the search space
     OPS = ['none', 'skip_connect', 'nor_conv_1x1', 'nor_conv_3x3', 'avg_pool_3x3']
@@ -41,7 +41,7 @@ class NASBench201:
         if self.verbose:
             print(f"Loading NB201 from {self.path} ({sizeof_fmt(size)})")
         with open(self.path, 'rb') as f:
-            if HAS_TQDM and size > 0:
+            if HAS_TQDM and self.verbose and size > 0:
                 bar = tqdm(total=size, unit='B', unit_scale=True, desc='Reading')
                 raw = bytearray()
                 chunk = f.read(1024 * 1024)
@@ -51,19 +51,18 @@ class NASBench201:
                     chunk = f.read(1024 * 1024)
                 bar.close()
                 # Unpickling stage
-                unp = tqdm(total=1, desc='Unpickling', unit='step')
+                if self.verbose:
+                    print("Unpickling data...")
                 self.data = pickle.loads(bytes(raw))
-                unp.update(1)
-                unp.close()
+                if self.verbose:
+                    print("Unpickling complete.")
             else:
                 # Unpickling stage (no size info)
-                if HAS_TQDM:
-                    unp = tqdm(total=1, desc='Unpickling', unit='step')
-                    self.data = pickle.load(f)
-                    unp.update(1)
-                    unp.close()
-                else:
-                    self.data = pickle.load(f)
+                if self.verbose:
+                    print("Unpickling data...")
+                self.data = pickle.load(f)
+                if self.verbose:
+                    print("Unpickling complete.")
         if self.verbose:
             size_info = 'dict' if isinstance(self.data, dict) else type(self.data).__name__
             print(f"Loaded NB201 data ({size_info})")
@@ -119,64 +118,61 @@ class NASBench201:
             seed: Optional random seed.
 
         Returns:
-            List of sampled architecture indices (0..15624).
+            List of sampled architecture strings in NB201 canonical format.
         """
         import random as rnd
         if seed is not None:
             rnd.seed(seed)
 
+        # Sample indices first
         if self._arch_keys:
             # Sample from loaded architectures
-            return rnd.sample(self._arch_keys, min(n, len(self._arch_keys)))
+            idxs = rnd.sample(self._arch_keys, min(n, len(self._arch_keys)))
         else:
             # Sample uniformly from the full index space (0..15624)
             max_idx = (self.NUM_OPS ** self.NUM_EDGES) - 1  # 15624
-            return [rnd.randint(0, max_idx) for _ in range(n)]
+            idxs = [rnd.randint(0, max_idx) for _ in range(n)]
 
-    def random_sample_str(self, n: int = 1, seed: Optional[int] = None):
-        """Sample random architectures as NB201 arch strings.
-
-        Args:
-            n: Number of samples to return.
-            seed: Optional random seed.
-
-        Returns:
-            List of architecture strings in NB201 canonical format.
-        """
-        import random as rnd
-        if seed is not None:
-            rnd.seed(seed)
-
-        # Prefer mapping when available
-        if self._idx_to_str:
-            if self._arch_keys:
-                idxs = rnd.sample(self._arch_keys, min(n, len(self._arch_keys)))
-            else:
-                max_idx = (self.NUM_OPS ** self.NUM_EDGES) - 1
-                idxs = [rnd.randint(0, max_idx) for _ in range(n)]
-            return [self._idx_to_str.get(i, self.index_to_arch_str(i)) for i in idxs]
-
-        # Fallback: generate from ops
-        return [self.index_to_arch_str(i) for i in self.random_sample(n, seed=None)]
+        # Convert to strings
+        return [self._idx_to_str.get(i, self._index_to_arch_str(i)) for i in idxs]
 
     def iter_all(self):
         """Iterate over all architectures in the loaded data.
 
         Returns:
-            Iterator over architecture keys/strings.
+            Iterator over architecture strings.
         """
         if self._arch_keys:
-            return iter(self._arch_keys)
+            # Convert indices to strings
+            return (self._idx_to_str.get(i, self._index_to_arch_str(i)) for i in self._arch_keys)
         return iter(())
 
-    def query(self, arch: Any, dataset: str = 'cifar10', split: str = 'val',
+    def get_index(self, arch: str) -> int:
+        """Convert an architecture string to its canonical index.
+
+        Args:
+            arch: NB201 architecture string (e.g., '|none~0|+|skip_connect~0|nor_conv_1x1~1|+|...')
+
+        Returns:
+            Integer index (0..15624) corresponding to the architecture.
+
+        Raises:
+            ValueError: If the architecture string is invalid or cannot be parsed.
+        """
+        # Try mapping first (faster if loaded)
+        arch_idx = self._str_to_idx.get(arch)
+        if arch_idx is not None:
+            return arch_idx
+
+        # Otherwise decode from string
+        return self._arch_str_to_index(arch)
+
+    def query(self, arch: str, dataset: str = 'cifar10', split: str = 'val',
               seed: Optional[int] = None, budget: Optional[Any] = None) -> Dict[str, Any]:
         """Query performance metrics for an architecture from loaded data.
 
-        Accepts either an integer index (0..15624) or a NB201 arch string.
-
         Args:
-            arch: Architecture index (int) or arch string (str).
+            arch: NB201 architecture string.
             dataset: Dataset name ('cifar10', 'cifar100', 'ImageNet16-120').
             split: Split name ('val', 'test', or 'train').
             seed: Optional seed (default: 777 for official NB201).
@@ -185,20 +181,10 @@ class NASBench201:
         Returns:
             Dictionary with keys: metric, metric_name, cost, std, info.
         """
-        # Normalize to index
-        arch_idx: Optional[int] = None
-        if isinstance(arch, int):
-            arch_idx = arch
-        elif isinstance(arch, str):
-            # Use mapping if loaded; otherwise decode from string
-            arch_idx = self._str_to_idx.get(arch)
-            if arch_idx is None:
-                try:
-                    arch_idx = self.arch_str_to_index(arch)
-                except Exception:
-                    arch_idx = None
-        else:
-            # Unsupported type
+        # Convert to index
+        try:
+            arch_idx = self.get_index(arch)
+        except Exception:
             arch_idx = None
 
         if not isinstance(self.data, dict) or 'arch2infos' not in self.data:
@@ -326,8 +312,8 @@ class NASBench201:
             'info': info,
         }
 
-    # --- Encoding helpers -------------------------------------------------
-    def index_to_arch_str(self, arch_idx: int) -> str:
+    # --- Internal encoding helpers -------------------------------------------------
+    def _index_to_arch_str(self, arch_idx: int) -> str:
         """Convert an architecture index (0..15624) to NB201 arch string.
 
         Uses a fixed edge order: (1<-0), (2<-0), (2<-1), (3<-0), (3<-1), (3<-2).
@@ -336,7 +322,7 @@ class NASBench201:
         ops = [self.OPS[i] for i in op_ids]
         return '|{}~0|+|{}~0|{}~1|+|{}~0|{}~1|{}~2|'.format(*ops)
 
-    def arch_str_to_index(self, arch_str: str) -> int:
+    def _arch_str_to_index(self, arch_str: str) -> int:
         """Convert a NB201 arch string to its canonical index (0..15624)."""
         op_ids = self._arch_str_to_ops(arch_str)
         return self._ops_to_index(op_ids)

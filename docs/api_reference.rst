@@ -1,180 +1,140 @@
 API Reference
 =============
 
-This document summarizes the unified API surface for NAS-Bench-101/201/301, including method usage, arguments, return values, and benchmark metadata (datasets, epochs, metrics).
+This document provides comprehensive reference for NASBench-101/201/301 APIs, including architecture representations, method signatures, return types, and benchmark-specific details.
 
 Benchmarks Overview
 -------------------
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 40 30 20
+   :widths: 15 25 30 15 15
 
    * - Benchmark
      - Datasets
+     - Available Splits
      - Primary Metrics
      - Training Epochs
-   * - NAS-Bench-101
+   * - NASBench-101
      - CIFAR-10
+     - train, val, test
      - train/val/test accuracy
      - 4, 12, 36, 108
-   * - NAS-Bench-201
+   * - NASBench-201
      - CIFAR-10, CIFAR-100, ImageNet16-120
+     - train, val, test
      - train/val/test accuracy, losses
-     - 12, 200
-   * - NAS-Bench-301
+     - 0-199 (200 epochs total)
+   * - NASBench-301
      - CIFAR-10, CIFAR-100
+     - val, test
      - surrogate val/test accuracy
-     - N/A (surrogate)
+     - N/A (surrogate-based)
 
-.. note::
-   NAS-Bench-301 relies on surrogate models; epochs are not applicable.
+Architecture Representations
+----------------------------
+
+Each benchmark uses a different architecture representation:
+
+**NASBench-101 (Arch101):**
+
+- Dataclass with two fields:
+
+  - ``adjacency``: list[list[int]] — 7×7 adjacency matrix
+  - ``operations``: list[str] — 7 operations from ['input', 'conv3x3-bn-relu', 'conv1x1-bn-relu', 'maxpool3x3', 'output']
+
+- Example:
+
+.. code-block:: python
+
+   Arch101(
+       adjacency=[[0, 1, 1, 0, 0, 0, 0],
+                  [0, 0, 0, 1, 1, 0, 0],
+                  ...],
+       operations=['input', 'conv3x3-bn-relu', 'conv1x1-bn-relu', ..., 'output']
+   )
+
+**NASBench-201 (String):**
+
+- Architecture string format: ``|op~0|+|op~0|op~1|+|op~0|op~1|op~2|``
+- 6 edges connecting 4 nodes in a cell
+- 5 operations per edge: ['none', 'skip_connect', 'nor_conv_1x1', 'nor_conv_3x3', 'avg_pool_3x3']
+- Total search space: 5^6 = 15,625 unique architectures
+- Each architecture maps to a canonical index (0-15624)
+
+- Example:
+
+.. code-block:: python
+
+   '|none~0|+|skip_connect~0|nor_conv_1x1~1|+|nor_conv_3x3~0|avg_pool_3x3~1|skip_connect~2|'
+
+**NASBench-301 (Dict):**
+
+- DARTS-style architecture with normal and reduction cells
+- Dictionary with 'normal' and 'reduce' keys
+- Each cell: list of (operation, predecessor_node) tuples
+- 8 operations: ['max_pool_3x3', 'avg_pool_3x3', 'skip_connect', 'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5', 'none']
+- 4 intermediate nodes per cell, each with 2 input edges
+
+- Example:
+
+.. code-block:: python
+
+   {
+       'normal': [('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ...],
+       'reduce': [('max_pool_3x3', 0), ('max_pool_3x3', 1), ('skip_connect', 2), ...]
+   }
 
 Common API Surface
 ------------------
 
-All benchmarks expose the following methods via ``nasbenchapi.nb_api`` classes: ``NASBench101``, ``NASBench201``, and ``NASBench301``.
+All benchmarks expose the following core methods.
 
-load
-~~~~
-
-Load the benchmark dataset.
+Initialization
+~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   api = NASBench101().load('/path/to/nb101.pkl')
+   from nasbenchapi import NASBench101, NASBench201, NASBench301
 
-**Args:**
+   # Using explicit path
+   api = NASBench201('/path/to/nb201.pkl', verbose=True)
 
-- ``data_path``: Optional[str] — explicit dataset path; if omitted, env var is used.
+   # Using environment variable
+   api = NASBench201(verbose=True)  # Reads from NASBENCH201_PATH
 
-**Returns:** self instance
+**Constructor Args:**
 
-.. note::
-   Environment variables are set as follows:
+- ``pickle_path``: Optional[str] — path to pickled benchmark data; if None, reads from environment variable
+- ``verbose``: bool — enable/disable all logging output (default: True)
 
-   - ``NASBENCH101_PATH``
-   - ``NASBENCH201_PATH``
-   - ``NASBENCH301_PATH``
+**Environment Variables:**
 
-close
-~~~~~
+- ``NASBENCH101_PATH`` — path to NB101 pickle file
+- ``NASBENCH201_PATH`` — path to NB201 pickle file
+- ``NASBENCH301_PATH`` — path to NB301 pickle file
 
-Close and cleanup resources.
+get_statistics
+~~~~~~~~~~~~~~
 
-.. code-block:: python
-
-   api.close()
-
-**Args:** none
-
-**Returns:** None
-
-set_seed
-~~~~~~~~
-
-Set the random seed for reproducibility.
+Get statistics about the loaded benchmark data.
 
 .. code-block:: python
 
-   api.set_seed(42)
+   stats = api.get_statistics()
 
-**Args:**
+**Returns:** dict — benchmark statistics
 
-- ``seed``: int — RNG seed
+**Return Format by Benchmark:**
 
-**Returns:** None
-
-bench_name
-~~~~~~~~~~
-
-Get the benchmark identifier.
-
-.. code-block:: python
-
-   name = api.bench_name()
-
-**Args:** none
-
-**Returns:** str — short name (e.g., 'nb101', 'nb201', 'nb301')
-
-datasets
-~~~~~~~~
-
-List available datasets.
-
-.. code-block:: python
-
-   ds = api.datasets()
-
-**Args:** none
-
-**Returns:** list[str] — dataset names
-
-splits
-~~~~~~
-
-Get data splits for a dataset.
-
-.. code-block:: python
-
-   spl = api.splits('cifar10')
-
-**Args:**
-
-- ``dataset``: str — dataset name
-
-**Returns:** list[str] — supported splits (['train', 'val', 'test'])
-
-decode
-~~~~~~
-
-Decode a benchmark-native encoding to an architecture object.
-
-.. code-block:: python
-
-   arch = api.decode(encoding)
-
-**Args:**
-
-- ``encoding``: Any — benchmark-native representation
-
-**Returns:** Any — decoded architecture object
-
-encode
-~~~~~~
-
-Encode an architecture object to benchmark-native representation.
-
-.. code-block:: python
-
-   encoding = api.encode(arch)
-
-**Args:**
-
-- ``arch``: Any — architecture object
-
-**Returns:** Any — benchmark-native encoding
-
-id
-~~
-
-Get a stable identifier for an architecture.
-
-.. code-block:: python
-
-   arch_id = api.id(arch)
-
-**Args:**
-
-- ``arch``: Any — architecture object
-
-**Returns:** str — stable identifier
+- NB101: ``{'benchmark': 'nasbench101', 'architectures': int, 'records': int}``
+- NB201: ``{'benchmark': 'nasbench201', 'entries': int}``
+- NB301: ``{'benchmark': 'nasbench301', 'files': int}``
 
 random_sample
 ~~~~~~~~~~~~~
 
-Sample random architectures from the benchmark.
+Sample random architectures from the benchmark search space.
 
 .. code-block:: python
 
@@ -182,71 +142,63 @@ Sample random architectures from the benchmark.
 
 **Args:**
 
-- ``n``: int — number of samples (default 1)
-- ``seed``: Optional[int] — RNG seed
+- ``n``: int — number of samples (default: 1)
+- ``seed``: Optional[int] — RNG seed for reproducibility
 
-**Returns:** list[Any] — sampled architectures
+**Returns:**
+
+- **NB101**: list[Arch101] — list of Arch101 dataclass objects
+- **NB201**: list[str] — list of architecture strings
+- **NB301**: list[dict] — list of architecture dicts with 'normal' and 'reduce' keys
 
 iter_all
 ~~~~~~~~
 
-Iterate over all available architectures (if supported).
+Iterate over all available architectures in the loaded data.
 
 .. code-block:: python
 
    for arch in api.iter_all():
-       ...
+       result = api.query(arch, dataset='cifar10', split='val')
 
-**Args:** none
+**Returns:**
 
-**Returns:** Iterator[Any] — iterate all available architectures
+- **NB101**: Iterator[Arch101]
+- **NB201**: Iterator[str] — architecture strings
+- **NB301**: Iterator[int] — indices in loaded data
 
-mutate
-~~~~~~
+get_index
+~~~~~~~~~
 
-Mutate an architecture.
+Get an identifier or index for an architecture.
 
 .. code-block:: python
 
-   mut = api.mutate(arch, rng=random.Random(0), kind='edge_toggle')
+   # NB201: Convert arch string to numeric index
+   idx = api.get_index('|none~0|+|skip_connect~0|nor_conv_1x1~1|+|...')
+   # Returns: 12345 (int in range 0-15624)
+
+   # NB101: Get hash identifier
+   hash_id = api.get_index(arch_obj)
+   # Returns: 'a3f5b2...' (SHA256 hash string)
+
+   # NB301: Find index in loaded data
+   idx = api.get_index(arch_dict)
+   # Returns: 42 or None
 
 **Args:**
 
-- ``arch``: Any — architecture to mutate
-- ``rng``: random.Random — RNG instance
-- ``kind``: Optional[str] — mutation kind (benchmark-defined)
+- ``arch``: Architecture representation (type depends on benchmark)
 
-**Returns:** Any — mutated architecture
+  - NB101: Arch101 object
+  - NB201: str (architecture string)
+  - NB301: dict (architecture dict)
 
-NAS-Bench-101 Specifics
-------------------------
+**Returns:**
 
-Import
-~~~~~~
-
-.. code-block:: python
-
-   from nasbenchapi import NASBench101
-   api = NASBench101('/path/to/nb101.pkl')
-
-Architecture Type (Arch101)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- ``adjacency``: list[list[int]] — 7x7 adjacency matrix
-- ``operations``: list[str] — 7 operations
-
-op_set
-~~~~~~
-
-Get available operations.
-
-.. code-block:: python
-
-   ops = api.op_set()
-
-**Args:** none
-
-**Returns:** list[str] — available operations (e.g., input, conv3x3-bn-relu, ...)
+- **NB101**: str — stable SHA256 hash identifier
+- **NB201**: int — canonical index (0-15624)
+- **NB301**: Optional[int] — index in loaded data, or None if not found
 
 query
 ~~~~~
@@ -255,23 +207,174 @@ Query performance metrics for an architecture from loaded data.
 
 .. code-block:: python
 
-   res = api.query(arch, dataset='cifar10', split='val')
+   # NB201 example
+   result = api.query(
+       arch='|none~0|+|skip_connect~0|nor_conv_1x1~1|+|...',
+       dataset='cifar10',
+       split='val',
+       seed=777,
+       budget=199
+   )
+   print(f"Validation accuracy: {result['metric']:.2f}%")
+   print(f"Training time: {result['cost']:.2f}s")
 
 **Args:**
 
-- ``arch``: Arch101 — architecture to query
-- ``dataset``: str — dataset name ('cifar10')
+- ``arch``: Architecture representation (depends on benchmark)
+
+  - **NB101**: Arch101 object
+  - **NB201**: str (architecture string)
+  - **NB301**: Any (dict or index)
+
+- ``dataset``: str — dataset name
+
+  - **NB101**: 'cifar10'
+  - **NB201**: 'cifar10', 'cifar100', 'ImageNet16-120'
+  - **NB301**: 'cifar10', 'cifar100'
+
+- ``split``: str — data split
+
+  - **NB101**: 'train', 'val', 'test'
+  - **NB201**: 'train', 'val', 'test'
+  - **NB301**: 'val', 'test'
+
+- ``seed``: Optional[int] — random seed (default varies by benchmark)
+
+  - **NB201**: default 777 (official NB201 seed)
+  - **NB101/NB301**: unused
+
+- ``budget``: Optional[Any] — training budget
+
+  - **NB101**: epoch count (4, 12, 36, 108)
+  - **NB201**: epoch number 0-199 (default: 199 for final epoch)
+  - **NB301**: unused (surrogate-based)
+
+**Returns:** dict with the following keys:
+
+.. code-block:: python
+
+   {
+       'metric': Optional[float],      # Primary metric (e.g., accuracy %)
+       'metric_name': str,              # Name of metric (e.g., 'val_acc')
+       'cost': Optional[float],         # Training time in seconds
+       'std': Optional[float],          # Standard deviation (if available)
+       'info': dict                     # Additional metadata and raw data
+   }
+
+**Return Value Details:**
+
+- ``metric``: Accuracy percentage (e.g., 94.5) or None if not available
+- ``metric_name``: Describes the metric, typically '{split}_acc'
+- ``cost``: Training/evaluation time in seconds, or None
+- ``std``: Standard deviation of the metric across multiple runs (rarely used)
+- ``info``: Dictionary containing additional information:
+
+  - **NB201**: arch_index, dataset, split, seed, epoch, arch_str, params, flop
+  - **NB101**: Full raw record from the benchmark
+  - **NB301**: Currently returns placeholder note
+
+NASBench-101 Specifics
+------------------------
+
+Import and Initialization
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from nasbenchapi import NASBench101
+
+   api = NASBench101('/path/to/nasbench_only108.pkl', verbose=True)
+   # Or use environment variable
+   api = NASBench101(verbose=True)
+
+Dataset and Splits
+~~~~~~~~~~~~~~~~~~
+
+- **Single dataset**: CIFAR-10 only
+- **Splits**: train, val, test
+- **Training epochs**: 4, 12, 36, 108 (typically query final epoch 108)
+
+Architecture Type (Arch101)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from nasbenchapi import Arch101
+
+   arch = Arch101(
+       adjacency=[[0, 1, 1, 0, 0, 0, 0], ...],  # 7×7 matrix
+       operations=['input', 'conv3x3-bn-relu', ..., 'output']  # 7 ops
+   )
+
+Operations
+~~~~~~~~~~
+
+Available operations (from ``op_set()``):
+
+- 'input' (fixed at node 0)
+- 'conv3x3-bn-relu'
+- 'conv1x1-bn-relu'
+- 'maxpool3x3'
+- 'output' (fixed at node 6)
+
+encode / decode / id
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # Encode Arch101 to native strings
+   encoding = api.encode(arch)
+   # Returns: {'adjacency_str': '0110000...', 'operations_str': 'input,conv3x3-bn-relu,...'}
+
+   # Decode encoding to Arch101
+   arch = api.decode(encoding)
+
+   # Get stable hash ID
+   arch_id = api.id(arch)
+   # Returns: 'a3f5b2c8...' (SHA256 hash)
+
+get_index
+~~~~~~~~~
+
+.. code-block:: python
+
+   # Returns the same as id() for consistency
+   hash_id = api.get_index(arch)
+   # Returns: 'a3f5b2c8...'
+
+random_sample
+~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   archs = api.random_sample(n=10, seed=42)
+   # Returns: list of 10 Arch101 objects sampled from loaded data
+
+iter_all
+~~~~~~~~
+
+.. code-block:: python
+
+   for arch in api.iter_all():
+       result = api.query(arch, dataset='cifar10', split='test')
+       print(f"Test acc: {result['metric']:.2f}%")
+
+query
+~~~~~
+
+.. code-block:: python
+
+   result = api.query(arch, dataset='cifar10', split='val')
+
+**Args:**
+
+- ``arch``: Arch101 — architecture object
+- ``dataset``: str — 'cifar10' (only dataset available)
 - ``split``: str — 'train', 'val', or 'test'
-- ``seed``: Optional[int] — reproducibility seed (unused)
-- ``budget``: Optional[Any] — optional budget (unused)
+- ``seed``: Optional[int] — unused
+- ``budget``: Optional[Any] — unused (always uses final epoch data)
 
-**Returns:** dict — keys:
-
-- ``metric``: float | None — accuracy for the specified split
-- ``metric_name``: str — e.g., 'val_acc', 'test_acc', 'train_acc'
-- ``cost``: float | None — training time in seconds
-- ``std``: float | None — standard deviation (not used in NB101)
-- ``info``: dict — raw record data
+**Returns:** dict with keys: metric, metric_name, cost, std, info
 
 train_time
 ~~~~~~~~~~
@@ -280,205 +383,407 @@ Get training time for an architecture.
 
 .. code-block:: python
 
-   t = api.train_time(arch, dataset='cifar10')
+   time_sec = api.train_time(arch, dataset='cifar10')
+   # Returns: float (seconds) or None
 
-**Args:**
+mutate
+~~~~~~
 
-- ``arch``: Arch101 — architecture
-- ``dataset``: str — dataset name
-
-**Returns:** float | None — training time if available
-
-Encoding/Decoding Examples
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Apply a mutation to an architecture.
 
 .. code-block:: python
 
-   # Encode
-   enc = api.encode(arch)
-   # Decode
-   arch2 = api.decode(enc)
-   # Stable ID
-   hid = api.id(arch)
+   import random
+   rng = random.Random(42)
+   mutated = api.mutate(arch, rng=rng, kind='edge_toggle')
 
-NAS-Bench-201 Specifics
+**Mutation kinds:**
+
+- 'edge_toggle' — flip an edge in the adjacency matrix
+- 'op_swap' — swap two operations
+
+NASBench-201 Specifics
 ------------------------
 
-Import
-~~~~~~
+Import and Initialization
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
    from nasbenchapi import NASBench201
-   api = NASBench201('/path/to/nb201.pkl')
 
-**Datasets:** ['cifar10', 'cifar100', 'ImageNet16-120']
+   api = NASBench201('/path/to/NASBench-201-v1_1-096897.pth', verbose=True)
+   # Or use environment variable
+   api = NASBench201(verbose=True)
+
+Dataset and Splits
+~~~~~~~~~~~~~~~~~~
+
+- **Datasets**: CIFAR-10, CIFAR-100, ImageNet16-120
+- **Splits**: train, val, test
+- **Training epochs**: 0-199 (200 epochs total)
+- **Common budget values**: 12 (early), 199 (final epoch)
+- **Default seed**: 777 (official NB201 seed)
 
 Architecture Representation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-NB201 uses a cell-based search space with:
+NB201 uses **architecture strings** as the primary representation:
 
-- 6 edges connecting 4 nodes
-- 5 possible operations per edge: ['none', 'skip_connect', 'nor_conv_1x1', 'nor_conv_3x3', 'avg_pool_3x3']
-- Total search space: 5^6 = 15,625 architectures
-- **Architectures identified by integer indices (0-15624)**
-  with a canonical mapping to/from NB201 arch strings
+.. code-block:: python
 
-Official NB201 format stores architecture strings in metadata: ``|op~0|+|op~0|op~1|+|op~0|op~1|op~2|``
+   arch_str = '|none~0|+|skip_connect~0|nor_conv_1x1~1|+|nor_conv_3x3~0|avg_pool_3x3~1|skip_connect~2|'
+
+**Format details:**
+
+- Cell with 4 nodes (node 0 is input, nodes 1-3 are intermediate, node 4 is output)
+- 6 edges: (1←0), (2←0), (2←1), (3←0), (3←1), (3←2)
+- Each edge has one operation from: ['none', 'skip_connect', 'nor_conv_1x1', 'nor_conv_3x3', 'avg_pool_3x3']
+- String format: ``|op~src|+|op~src|op~src|+|op~src|op~src|op~src|``
+
+**Index mapping:**
+
+- Each architecture has a canonical integer index: 0 to 15,624
+- Use ``get_index(arch_str)`` to convert string → index
 
 random_sample
 ~~~~~~~~~~~~~
 
-Sample random architectures from the search space or loaded data.
-
 .. code-block:: python
 
-   samples = api.random_sample(n=5, seed=42)
-   # Returns list of integer indices: [0, 453, 8921, ...]
+   arch_strs = api.random_sample(n=5, seed=42)
+   # Returns: ['|none~0|+|...', '|skip_connect~0|+|...', ...]
 
-- If data is loaded: samples from available architecture indices (0-15624)
-- If no data: samples uniformly from the full index range
-
-random_sample_str
-~~~~~~~~~~~~~~~~~
-
-Sample random architectures as NB201 arch strings.
-
-.. code-block:: python
-
-   samples = api.random_sample_str(n=3, seed=7)
-   # Returns list of strings: ['|op~0|+|op~0|op~1|+|op~0|op~1|op~2|', ...]
-
-- Uses loaded mappings when available; otherwise derives from index
+**Returns**: list[str] — architecture strings
 
 iter_all
 ~~~~~~~~
 
-Iterate over all architectures in loaded data.
+.. code-block:: python
+
+   for arch_str in api.iter_all():
+       idx = api.get_index(arch_str)
+       print(f"Architecture {idx}: {arch_str}")
+
+**Returns**: Iterator[str] — yields architecture strings
+
+get_index
+~~~~~~~~~
+
+Convert an architecture string to its canonical integer index.
 
 .. code-block:: python
 
-   for arch_idx in api.iter_all():
-       result = api.query(arch_idx, dataset='cifar10', split='val')
-       print(f"Arch {arch_idx}: {result['metric']}")
+   idx = api.get_index('|none~0|+|skip_connect~0|nor_conv_1x1~1|+|...')
+   # Returns: 12345 (int in range 0-15624)
+
+**Args:**
+
+- ``arch``: str — NB201 architecture string
+
+**Returns:** int — index (0-15624)
+
+**Raises:** ValueError if architecture string is invalid
 
 query
 ~~~~~
 
-Query performance metrics for an architecture.
-
 .. code-block:: python
 
-   # Accepts either index or arch string
-   result = api.query(0, dataset='cifar10', split='val', budget=199)
-   result2 = api.query('|nor_conv_3x3~0|+|skip_connect~0|nor_conv_1x1~1|+|avg_pool_3x3~0|none~1|skip_connect~2|',
-                       dataset='cifar10', split='val', budget=199)
-   print(f"Validation accuracy: {result['metric']:.2f}%")
+   result = api.query(
+       arch='|none~0|+|skip_connect~0|nor_conv_1x1~1|+|...',
+       dataset='cifar10',
+       split='val',
+       seed=777,      # Default seed
+       budget=199     # Final epoch
+   )
 
 **Args:**
 
-- ``arch``: int | str — architecture index (0-15624) or NB201 arch string
+- ``arch``: str — NB201 architecture string
 - ``dataset``: str — 'cifar10', 'cifar100', or 'ImageNet16-120'
 - ``split``: str — 'train', 'val', or 'test'
 - ``seed``: Optional[int] — data seed (default: 777)
-- ``budget``: Optional[int] — epoch number 0-199 (default: 199 for final epoch)
+- ``budget``: Optional[int] — epoch number 0-199 (default: 199)
 
-**Returns:** dict with 'metric', 'metric_name', 'cost', 'std', 'info'
+**Returns:** dict with keys:
 
-Conversions
-~~~~~~~~~~~
+- ``metric``: accuracy percentage (e.g., 91.23)
+- ``metric_name``: '{split}_acc'
+- ``cost``: training/eval time in seconds
+- ``std``: None (not used)
+- ``info``: dict with arch_index, dataset, split, seed, epoch, arch_str, params, flop
 
-Helper methods to convert between indices and arch strings:
+**Split-specific behavior:**
 
-.. code-block:: python
+- 'train': Returns training accuracy at specified epoch
+- 'val': Returns validation accuracy (uses 'x-valid@epoch' keys in data)
+- 'test': Returns test accuracy (uses 'ori-test@epoch' keys, falls back to validation)
 
-   s = api.index_to_arch_str(123)
-   i = api.arch_str_to_index(s)
-
-Current Behavior
-~~~~~~~~~~~~~~~~
-
-- ``decode/encode/id``: pass-through placeholders until canonical representation is defined
-- ``random_sample/iter_all``: implemented; samples indices by default
-- ``random_sample_str``: implemented; samples arch strings
-- ``query``: accepts index or arch string and returns real metrics from loaded data
-- ``mutate``: no-op
-
-NAS-Bench-301 Specifics
+NASBench-301 Specifics
 ------------------------
 
-Import
-~~~~~~
+Import and Initialization
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
    from nasbenchapi import NASBench301
-   api = NASBench301('/path/to/nb301.pkl')
 
-**Datasets:** ['cifar10', 'cifar100']
+   api = NASBench301('/path/to/nb301_data.pkl', verbose=True)
+   # Or use environment variable
+   api = NASBench301(verbose=True)
+
+Dataset and Splits
+~~~~~~~~~~~~~~~~~~
+
+- **Datasets**: CIFAR-10, CIFAR-100
+- **Splits**: val, test (no train split for surrogates)
+- **Training epochs**: N/A (surrogate models predict final performance)
+
+.. note::
+   NASBench-301 uses surrogate models (XGBoost, LGBM, etc.) to predict architecture performance.
+   The current implementation returns placeholder results until surrogate models are integrated.
 
 Architecture Representation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-NB301 uses DARTS-style search space with:
+NB301 uses **DARTS-style architecture dictionaries**:
 
+.. code-block:: python
+
+   arch = {
+       'normal': [
+           ('sep_conv_3x3', 0), ('sep_conv_3x3', 1),  # Node 1 inputs
+           ('sep_conv_3x3', 0), ('sep_conv_3x3', 1),  # Node 2 inputs
+           ('sep_conv_3x3', 1), ('skip_connect', 0),  # Node 3 inputs
+           ('skip_connect', 0), ('dil_conv_3x3', 2)   # Node 4 inputs
+       ],
+       'reduce': [
+           ('max_pool_3x3', 0), ('max_pool_3x3', 1),
+           ('skip_connect', 2), ('max_pool_3x3', 0),
+           ('max_pool_3x3', 0), ('skip_connect', 2),
+           ('skip_connect', 2), ('max_pool_3x3', 1)
+       ]
+   }
+
+**Format details:**
+
+- Two cells: 'normal' and 'reduce' (reduction cell)
+- Each cell has 4 intermediate nodes
+- Each node selects 2 operations from previous nodes (including input nodes 0 and 1)
 - 8 operations: ['max_pool_3x3', 'avg_pool_3x3', 'skip_connect', 'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5', 'none']
-- 4 intermediate nodes per cell
-- Each node selects 2 operations from previous nodes
-- Two cells: normal and reduction
-
-Architecture representation: dict with 'normal' and 'reduce' keys, each containing a list of (operation, predecessor) tuples.
+- Each entry is a tuple: (operation_name, predecessor_node_index)
 
 random_sample
 ~~~~~~~~~~~~~
 
-Sample random architectures from the search space or loaded data.
-
 .. code-block:: python
 
-   samples = api.random_sample(n=3, seed=42)
-   # Returns list of dicts: {'normal': [...], 'reduce': [...]}
+   archs = api.random_sample(n=3, seed=42)
+   # Returns: [{'normal': [...], 'reduce': [...]}, {...}, {...}]
 
-- If data is loaded: samples from available architectures
-- If no data: generates random DARTS-style architectures from search space
+**Returns**: list[dict] — list of architecture dictionaries
 
 iter_all
 ~~~~~~~~
 
-Iterate over all architectures in loaded data.
+.. code-block:: python
+
+   for idx in api.iter_all():
+       print(f"Architecture index: {idx}")
+
+**Returns**: Iterator[int] — yields indices in loaded data
+
+get_index
+~~~~~~~~~
+
+Find the index of an architecture in loaded data.
 
 .. code-block:: python
 
-   for arch in api.iter_all():
-       print(arch)
+   idx = api.get_index(arch_dict)
+   # Returns: 42 (int) or None if not found
+
+**Args:**
+
+- ``arch``: dict — architecture dict with 'normal' and 'reduce' keys
+
+**Returns:** Optional[int] — index in loaded data, or None if not found
 
 query
 ~~~~~
 
-Query performance metrics for an architecture.
-
 .. code-block:: python
 
-   result = api.query(arch_dict, dataset='cifar10', split='val')
-   # Note: Returns placeholder without surrogate models
+   result = api.query(
+       arch={'normal': [...], 'reduce': [...]},
+       dataset='cifar10',
+       split='val'
+   )
 
 **Args:**
 
 - ``arch``: Any — architecture representation (dict or index)
 - ``dataset``: str — 'cifar10' or 'cifar100'
 - ``split``: str — 'val' or 'test'
-- ``seed``: Optional[int] — reproducibility seed (unused)
-- ``budget``: Optional[Any] — budget specification (unused)
+- ``seed``: Optional[int] — unused
+- ``budget``: Optional[Any] — unused
 
-**Returns:** dict with 'metric', 'metric_name', 'cost', 'std', 'info'
+**Returns:** dict with keys: metric, metric_name, cost, std, info
 
-**Note:** NB301 requires surrogate models for predictions. Currently returns placeholder values.
+.. warning::
+   Current implementation returns placeholder values:
+   ``{'metric': None, 'metric_name': 'val_acc', 'cost': None, 'std': None, 'info': {'note': 'NB301 requires surrogate models for predictions'}}``
 
-Current Behavior
-~~~~~~~~~~~~~~~~
+   Surrogate model integration is planned for future releases.
 
-- ``decode/encode/id``: pass-through placeholders
-- ``random_sample/iter_all``: **fully implemented** - samples from data or generates from search space
-- ``query``: **placeholder** - requires surrogate model integration for real predictions
-- ``mutate``: no-op
+Complete Usage Examples
+-----------------------
+
+NASBench-101 Example
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from nasbenchapi import NASBench101
+
+   # Initialize
+   api = NASBench101(verbose=True)
+   stats = api.get_statistics()
+   print(f"Loaded {stats['architectures']} architectures")
+
+   # Sample architectures
+   archs = api.random_sample(n=5, seed=42)
+
+   # Query performance
+   for arch in archs:
+       result = api.query(arch, dataset='cifar10', split='test')
+       print(f"Test accuracy: {result['metric']:.2f}%")
+       print(f"Training time: {result['cost']:.2f}s")
+
+NASBench-201 Example
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from nasbenchapi import NASBench201
+
+   # Initialize
+   api = NASBench201(verbose=True)
+
+   # Sample architecture strings
+   arch_strs = api.random_sample(n=3, seed=777)
+
+   # Query on multiple datasets
+   for arch_str in arch_strs:
+       idx = api.get_index(arch_str)
+       print(f"\nArchitecture {idx}:")
+
+       for dataset in ['cifar10', 'cifar100', 'ImageNet16-120']:
+           result = api.query(
+               arch=arch_str,
+               dataset=dataset,
+               split='test',
+               seed=777,
+               budget=199
+           )
+           print(f"  {dataset} test acc: {result['metric']:.2f}%")
+
+   # Iterate all architectures
+   count = 0
+   for arch_str in api.iter_all():
+       count += 1
+       if count > 5:
+           break
+       result = api.query(arch_str, dataset='cifar10', split='val')
+       print(f"Arch {count}: val_acc = {result['metric']:.2f}%")
+
+NASBench-301 Example
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from nasbenchapi import NASBench301
+
+   # Initialize
+   api = NASBench301(verbose=True)
+
+   # Sample DARTS-style architectures
+   archs = api.random_sample(n=2, seed=42)
+
+   # Query performance (placeholder until surrogates integrated)
+   for arch in archs:
+       result = api.query(arch, dataset='cifar10', split='val')
+       print(f"Result: {result}")
+
+Error Handling
+--------------
+
+Common Exceptions
+~~~~~~~~~~~~~~~~~
+
+**ValueError**:
+
+- Invalid architecture string format (NB201)
+- Architecture index out of range
+- Invalid dataset or split name
+
+**FileNotFoundError**:
+
+- Pickle file not found at specified path
+- Environment variable not set
+
+**KeyError**:
+
+- Data format mismatch (e.g., missing expected keys in pickle)
+
+Example Error Handling
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from nasbenchapi import NASBench201
+
+   try:
+       api = NASBench201('/path/to/data.pkl', verbose=True)
+   except FileNotFoundError:
+       print("Data file not found. Please set NASBENCH201_PATH or provide valid path.")
+       exit(1)
+
+   try:
+       result = api.query(
+           arch='|invalid~format|',
+           dataset='cifar10',
+           split='val'
+       )
+   except ValueError as e:
+       print(f"Invalid architecture: {e}")
+
+Verbose Logging Control
+-----------------------
+
+All benchmarks support a ``verbose`` parameter to control logging output:
+
+.. code-block:: python
+
+   # Enable all logging (default)
+   api = NASBench201(verbose=True)
+   # Outputs:
+   # Loading NB201 from /path/to/file.pkl (2.1 GB)
+   # Reading: 100%|██████████| 2.1G/2.1G [00:15<00:00]
+   # Unpickling data...
+   # Unpickling complete.
+   # Loaded NB201 data (dict)
+   # Found 15625 architectures in NB201
+
+   # Disable all logging (silent mode)
+   api = NASBench201(verbose=False)
+   # No output
+
+Logging includes:
+
+- File loading progress bars (via tqdm)
+- Unpickling status messages
+- Data summary and statistics
+- Warning messages (e.g., mapping failures)

@@ -27,13 +27,13 @@ def _hash_arch(payload: Dict[str, Any]) -> str:
 
 @dataclass
 class Arch101:
-    """NAS-Bench-101 architecture representation."""
+    """NASBench-101 architecture representation."""
     adjacency: List[List[int]]  # 7x7 adjacency matrix
     operations: List[str]  # 7 operations
 
 
 class NASBench101:
-    """NAS-Bench-101 API.
+    """NASBench-101 API.
 
     Expects a pickle with NB101 keys (entries_by_arch, 
     latest_by_arch, num_records).
@@ -50,7 +50,7 @@ class NASBench101:
         if self.verbose:
             print(f"Loading NB101 from {self.path} ({sizeof_fmt(size)})")
         with open(self.path, 'rb') as f:
-            if HAS_TQDM and size > 0:
+            if HAS_TQDM and self.verbose and size > 0:
                 bar = tqdm(total=size, unit='B', unit_scale=True, desc='Reading')
                 raw = bytearray()
                 chunk = f.read(1024 * 1024)
@@ -60,18 +60,17 @@ class NASBench101:
                     chunk = f.read(1024 * 1024)
                 bar.close()
                 # Unpickling stage
-                unp = tqdm(total=1, desc='Unpickling', unit='step')
+                if self.verbose:
+                    print("Unpickling data...")
                 self.data = pickle.loads(bytes(raw))
-                unp.update(1)
-                unp.close()
+                if self.verbose:
+                    print("Unpickling complete.")
             else:
-                if HAS_TQDM:
-                    unp = tqdm(total=1, desc='Unpickling', unit='step')
-                    self.data = pickle.load(f)
-                    unp.update(1)
-                    unp.close()
-                else:
-                    self.data = pickle.load(f)
+                if self.verbose:
+                    print("Unpickling data...")
+                self.data = pickle.load(f)
+                if self.verbose:
+                    print("Unpickling complete.")
         if self.verbose:
             print(f"Loaded {len(self.data.get('entries_by_arch', {}))} architectures")
 
@@ -106,6 +105,21 @@ class NASBench101:
         """Stable identifier for NB101 architectures."""
         payload = {"adjacency": arch.adjacency, "operations": arch.operations}
         return _hash_arch(payload)
+
+    def get_index(self, arch: Arch101) -> str:
+        """Get the stable hash identifier for an architecture.
+
+        Args:
+            arch: Arch101 architecture object.
+
+        Returns:
+            String hash identifier for the architecture.
+
+        Note:
+            For NB101, architectures are identified by hash rather than numeric index.
+            This method is equivalent to id() but provided for API consistency.
+        """
+        return self.id(arch)
 
     # Sampling / enumeration
     def random_sample(self, n: int = 1, seed: Optional[int] = None) -> List[Arch101]:

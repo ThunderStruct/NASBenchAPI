@@ -12,9 +12,9 @@ except ImportError:
     HAS_TQDM = False
 
 FIGSHARE_URLS = {
-    '101': 'https://figshare.com/placeholder/nb101.pkl',
-    '201': 'https://figshare.com/placeholder/nb201.pkl',
-    '301': 'https://figshare.com/placeholder/nb301.pkl',
+    '101': 'https://figshare.com/ndownloader/files/58862740',
+    '201': 'https://figshare.com/ndownloader/files/58862743',
+    '301': 'https://figshare.com/ndownloader/files/58862737',
 }
 
 ENV_VARS = {
@@ -53,7 +53,8 @@ def main(argv: Optional[list] = None) -> None:
     parser.add_argument('--benchmark', choices=['101', '201', '301'], required=False,
                         help='Benchmark to download (if omitted, prompts)')
     parser.add_argument('--output', type=str, required=False,
-                        help='Output path for the pickle file (defaults to env var location or ./datasets)')
+                        help='Output path (file or directory). If directory, filename is auto-appended. '
+                             'Defaults to env var location or ./datasets')
     args = parser.parse_args(argv)
 
     bench = args.benchmark
@@ -65,22 +66,30 @@ def main(argv: Optional[list] = None) -> None:
 
     env = ENV_VARS[bench]
     default_dir = Path.cwd() / 'datasets'
+    default_filename = f"nasbench{bench}.pkl"
+
     if args.output:
         out_path = Path(args.output)
+        # If output path is a directory or exists as a directory, append filename
+        if out_path.is_dir():
+            out_path = out_path / default_filename
+        # If path doesn't exist but has no suffix, treat as directory
+        elif not out_path.exists() and not out_path.suffix:
+            out_path = out_path / default_filename
     else:
         # Prefer env var; if set to a directory, drop file into it; otherwise create default dir
         env_val = os.environ.get(env)
         if env_val:
             p = Path(env_val)
-            if p.is_dir() or (bench == '301' and (not p.suffix or p.suffix.lower() != '.pkl')):
-                out_path = p / f"nasbench{bench}.pkl"
+            if p.is_dir() or (not p.exists() and not p.suffix):
+                out_path = p / default_filename
             else:
                 out_path = p
         else:
-            out_path = default_dir / f"nasbench{bench}.pkl"
+            out_path = default_dir / default_filename
 
     print(f"Target file: {out_path}")
-    if not _prompt_yes_no(f"Download NAS-Bench-{bench} from Figshare to this location?"):
+    if not _prompt_yes_no(f"Download NASBench-{bench} from Figshare to this location?"):
         print("Aborted by user.")
         sys.exit(0)
 

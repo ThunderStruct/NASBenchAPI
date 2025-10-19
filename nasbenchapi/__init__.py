@@ -1,5 +1,5 @@
 """
-NASBenchAPI: Unified APIs for NAS-Bench-101/201/301.
+NASBenchAPI: Unified APIs for NASBench-101/201/301.
 """
 
 from .nb_api import NASBench101, NASBench201, NASBench301

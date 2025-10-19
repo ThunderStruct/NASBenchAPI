@@ -18,7 +18,7 @@ except ImportError:
 
 
 class NASBench301:
-    """NAS-Bench-301 API.
+    """NASBench-301 API.
 
     Supports directory-converted JSON payloads or reserialized pickle.
     """
@@ -44,7 +44,7 @@ class NASBench301:
         if self.verbose:
             print(f"Loading NB301 from {self.path} ({sizeof_fmt(size)})")
         with open(self.path, 'rb') as f:
-            if HAS_TQDM and size > 0:
+            if HAS_TQDM and self.verbose and size > 0:
                 bar = tqdm(total=size, unit='B', unit_scale=True, desc='Reading')
                 raw = bytearray()
                 chunk = f.read(1024 * 1024)
@@ -54,18 +54,17 @@ class NASBench301:
                     chunk = f.read(1024 * 1024)
                 bar.close()
                 # Unpickling stage
-                unp = tqdm(total=1, desc='Unpickling', unit='step')
+                if self.verbose:
+                    print("Unpickling data...")
                 self.data = pickle.loads(bytes(raw))
-                unp.update(1)
-                unp.close()
+                if self.verbose:
+                    print("Unpickling complete.")
             else:
-                if HAS_TQDM:
-                    unp = tqdm(total=1, desc='Unpickling', unit='step')
-                    self.data = pickle.load(f)
-                    unp.update(1)
-                    unp.close()
-                else:
-                    self.data = pickle.load(f)
+                if self.verbose:
+                    print("Unpickling data...")
+                self.data = pickle.load(f)
+                if self.verbose:
+                    print("Unpickling complete.")
         if self.verbose:
             if isinstance(self.data, dict) and 'entries' in self.data:
                 print(f"Loaded NB301 directory payload with {len(self.data['entries'])} JSON files")
@@ -138,6 +137,29 @@ class NASBench301:
         if self._arch_keys:
             return iter(self._arch_keys)
         return iter(())
+
+    def get_index(self, arch: Dict[str, Any]) -> Optional[int]:
+        """Get the index for an architecture in the loaded data.
+
+        Args:
+            arch: Architecture representation (dict with 'normal' and 'reduce' keys).
+
+        Returns:
+            Integer index if architecture is found in loaded data, None otherwise.
+
+        Note:
+            NB301 uses DARTS-style architectures which don't have a simple numeric index
+            in the search space. This method searches for matching architectures in loaded data.
+        """
+        if not isinstance(self.data, dict) or 'entries' not in self.data:
+            return None
+
+        # Search for matching architecture in loaded data
+        for idx, entry in enumerate(self.data.get('entries', [])):
+            if entry == arch:
+                return idx
+
+        return None
 
     def query(self, arch: Any, dataset: str = 'cifar10', split: str = 'val',
               seed: Optional[int] = None, budget: Optional[Any] = None) -> Dict[str, Any]:

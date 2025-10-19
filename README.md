@@ -189,9 +189,9 @@ Detailed examples and the full API docs are [hosted on Read the Docs](https://na
 
 | Benchmark | Datasets | Metrics | Search Space Size |
 |-----------|----------|---------|-------------------|
-| **NAS-Bench-101** | CIFAR-10 | train/val/test accuracy, training time | 423,624 |
-| **NAS-Bench-201** | CIFAR-10, CIFAR-100, ImageNet16-120 | train/val/test accuracy, losses | 15,625 |
-| **NAS-Bench-301** | CIFAR-10, CIFAR-100 | surrogate val/test accuracy | ~10^18 (surrogate) |
+| **NASBench-101** | CIFAR-10 | train/val/test accuracy, training time | 423,624 |
+| **NASBench-201** | CIFAR-10, CIFAR-100, ImageNet16-120 | train/val/test accuracy, losses | 15,625 |
+| **NASBench-301** | CIFAR-10, CIFAR-100 | surrogate val/test accuracy | ~10^18 (surrogate) |
   
 
 
