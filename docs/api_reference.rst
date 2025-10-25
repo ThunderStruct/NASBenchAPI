@@ -105,7 +105,7 @@ Initialization
 
 **Constructor Args:**
 
-- ``pickle_path``: Optional[str] — path to pickled benchmark data; if None, reads from environment variable
+- ``data_path``: Optional[str] — path to pickled benchmark data; if None, reads from environment variable
 - ``verbose``: bool — enable/disable all logging output (default: True)
 
 **Environment Variables:**

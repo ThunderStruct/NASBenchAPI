@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nasbenchapi"
-version = "1.0.0"
+version = "1.0.1"
 description = "Lightweight, unified pickle-based NASBench APIs (101/201/301) with downloader"
 readme = "README.md"
 requires-python = ">=3.8"
