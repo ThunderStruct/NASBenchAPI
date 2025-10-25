@@ -72,7 +72,14 @@ class NASBench101:
                 if self.verbose:
                     print("Unpickling complete.")
         if self.verbose:
-            print(f"Loaded {len(self.data.get('entries_by_arch', {}))} architectures")
+            entries = self.data.get('entries_by_arch')
+            if isinstance(entries, dict):
+                arch_count = len(entries)
+            else:
+                arch_count = len(self.data.get('latest_by_arch', {}))
+            records = self.data.get('num_records')
+            extra = f" (records={records})" if records is not None else ""
+            print(f"[NB101] Loaded {arch_count} architectures{extra}")
 
     def get_statistics(self) -> Dict[str, Any]:
         entries = self.data.get('entries_by_arch', {})
@@ -228,4 +235,3 @@ class NASBench101:
                 time_val = last.get('derived', {}).get('training_time')
                 return float(time_val) if time_val is not None else None
         return None
-

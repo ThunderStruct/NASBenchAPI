@@ -149,7 +149,7 @@ Sample random architectures from the benchmark search space.
 
 - **NB101**: list[Arch101] — list of Arch101 dataclass objects
 - **NB201**: list[str] — list of architecture strings
-- **NB301**: list[dict] — list of architecture dicts with 'normal' and 'reduce' keys
+- **NB301**: list[int] — indices for entries in the loaded dataset (falls back to synthetic architecture dicts if raw entries are unavailable)
 
 iter_all
 ~~~~~~~~
@@ -200,6 +200,45 @@ Get an identifier or index for an architecture.
 - **NB201**: int — canonical index (0-15624)
 - **NB301**: Optional[int] — index in loaded data, or None if not found
 
+available_budgets
+~~~~~~~~~~~~~~~~~
+
+List available training budgets (epochs) for a dataset/split combination.
+
+.. code-block:: python
+
+   budgets = api.available_budgets(dataset='cifar10', split='val')
+   # Returns e.g. [199, 200] for NB201 validation
+
+**Args:**
+
+- ``dataset``: Optional[str] — target dataset (defaults to all datasets)
+- ``split``: Optional[str] — target split (defaults to all splits)
+
+**Returns:** Optional[list] — sorted list of budgets if tracked; None when budgets are not defined for the benchmark.
+
+- **NB101**: returns ``None`` (budgets not tracked)
+- **NB201**: list of available epochs per dataset/split based on original training logs
+- **NB301**: epochs derived from per-entry learning curves (validation) or final declared budget (test)
+
+exists
+~~~~~~
+
+Validate whether a combination of dataset, split, budget, and architecture is supported without issuing a full ``query``.
+
+.. code-block:: python
+
+   api.exists(dataset='cifar10', split='val', budget=199)  # -> True
+
+**Args:**
+
+- ``dataset``: Optional[str]
+- ``split``: Optional[str]
+- ``budget``: Optional[Any]
+- ``arch``: Optional[Any] — architecture representation
+
+**Returns:** bool — True if every provided component is supported, False otherwise.
+
 query
 ~~~~~
 
@@ -245,9 +284,9 @@ Query performance metrics for an architecture from loaded data.
 
 - ``budget``: Optional[Any] — training budget
 
-  - **NB101**: epoch count (4, 12, 36, 108)
+  - **NB101**: unused (returns final recorded metrics)
   - **NB201**: epoch number 0-199 (default: 199 for final epoch)
-  - **NB301**: unused (surrogate-based)
+  - **NB301**: epoch index for validation curves (defaults to final epoch); test split always reports the declared final budget
 
 **Returns:** dict with the following keys:
 
@@ -271,7 +310,7 @@ Query performance metrics for an architecture from loaded data.
 
   - **NB201**: arch_index, dataset, split, seed, epoch, arch_str, params, flop
   - **NB101**: Full raw record from the benchmark
-  - **NB301**: Currently returns placeholder note
+  - **NB301**: Entry metadata (index, dataset, epochs available/used, declared budget, optimizer tag, JSON path)
 
 NASBench-101 Specifics
 ------------------------
@@ -539,11 +578,7 @@ Dataset and Splits
 
 - **Datasets**: CIFAR-10, CIFAR-100
 - **Splits**: val, test (no train split for surrogates)
-- **Training epochs**: N/A (surrogate models predict final performance)
-
-.. note::
-   NASBench-301 uses surrogate models (XGBoost, LGBM, etc.) to predict architecture performance.
-   The current implementation returns placeholder results until surrogate models are integrated.
+- **Training epochs**: Validation learning curves provide per-epoch accuracies; the test split reports metrics at the declared final budget for each entry.
 
 Architecture Representation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -580,10 +615,10 @@ random_sample
 
 .. code-block:: python
 
-   archs = api.random_sample(n=3, seed=42)
-   # Returns: [{'normal': [...], 'reduce': [...]}, {...}, {...}]
+   indices = api.random_sample(n=3, seed=42)
+   # Returns: [102, 4096, 7123]
 
-**Returns**: list[dict] — list of architecture dictionaries
+**Returns**: list[int] — dataset entry indices (falls back to architecture dict samples if raw entries are unavailable)
 
 iter_all
 ~~~~~~~~
@@ -607,7 +642,7 @@ Find the index of an architecture in loaded data.
 
 **Args:**
 
-- ``arch``: dict — architecture dict with 'normal' and 'reduce' keys
+- ``arch``: Any — architecture dict, dataset index, or entry path string
 
 **Returns:** Optional[int] — index in loaded data, or None if not found
 
@@ -617,26 +652,26 @@ query
 .. code-block:: python
 
    result = api.query(
-       arch={'normal': [...], 'reduce': [...]},
+       arch=0,           # dataset index
        dataset='cifar10',
-       split='val'
+       split='val',
+       budget=50,        # epoch index
    )
 
 **Args:**
 
-- ``arch``: Any — architecture representation (dict or index)
+- ``arch``: Any — dataset index (int), entry path (str), or architecture dict with 'normal'/'reduce' keys
 - ``dataset``: str — 'cifar10' or 'cifar100'
 - ``split``: str — 'val' or 'test'
 - ``seed``: Optional[int] — unused
-- ``budget``: Optional[Any] — unused
+- ``budget``: Optional[int] — epoch index for validation curves (defaults to final epoch); ignored for test split
 
-**Returns:** dict with keys: metric, metric_name, cost, std, info
+**Returns:** dict with keys: metric, metric_name, cost, std, info (runtime in seconds, dataset metadata, epochs available/used, declared budget, optimizer tag, and JSON path)
 
-.. warning::
-   Current implementation returns placeholder values:
-   ``{'metric': None, 'metric_name': 'val_acc', 'cost': None, 'std': None, 'info': {'note': 'NB301 requires surrogate models for predictions'}}``
+**Split behavior:**
 
-   Surrogate model integration is planned for future releases.
+- ``val``: accuracy from the per-entry validation learning curve; budgets beyond the recorded length fall back to the final epoch.
+- ``test``: reported test accuracy at the declared final budget (the ``budget`` argument is ignored).
 
 Complete Usage Examples
 -----------------------
@@ -709,13 +744,14 @@ NASBench-301 Example
    # Initialize
    api = NASBench301(verbose=True)
 
-   # Sample DARTS-style architectures
-   archs = api.random_sample(n=2, seed=42)
+   # Sample dataset indices
+   arch_indices = api.random_sample(n=2, seed=42)
 
-   # Query performance (placeholder until surrogates integrated)
-   for arch in archs:
-       result = api.query(arch, dataset='cifar10', split='val')
-       print(f"Result: {result}")
+   # Query performance at multiple epochs
+   for idx in arch_indices:
+       final_val = api.query(idx, dataset='cifar10', split='val')
+       mid_val = api.query(idx, dataset='cifar10', split='val', budget=50)
+       print(f"Index {idx}: final={final_val['metric']:.2f}% | mid@50={mid_val['metric']:.2f}%")
 
 Error Handling
 --------------
@@ -774,8 +810,7 @@ All benchmarks support a ``verbose`` parameter to control logging output:
    # Reading: 100%|██████████| 2.1G/2.1G [00:15<00:00]
    # Unpickling data...
    # Unpickling complete.
-   # Loaded NB201 data (dict)
-   # Found 15625 architectures in NB201
+   # [NB201] Loaded 15625 architectures (source=arch2infos)
 
    # Disable all logging (silent mode)
    api = NASBench201(verbose=False)

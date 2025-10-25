@@ -178,6 +178,18 @@ nasbench-download
 
 You may optionally set the `--benchmark={101|201|301}` argument. Otherwise, the tool will prompt for benchmark selection interactively.
 
+
+**Manual Download**
+
+Alternatively, manually download the Pickle-based benchmarks through the following links:
+
+| Benchmark | Download Link |
+|-----------|---------------|
+| **NASBench-101** | [Figshare Link](https://figshare.com/ndownloader/files/58862740) |
+| **NASBench-201** | [Figshare Link](https://figshare.com/ndownloader/files/58862743) |
+| **NASBench-301** | [Figshare Link](https://figshare.com/ndownloader/files/58862737) |
+
+
 ### Documentation
 
 Detailed examples and the full API docs are [hosted on Read the Docs](https://nasbenchapi.readthedocs.io/en/latest/).

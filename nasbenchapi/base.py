@@ -58,6 +58,19 @@ class NASBenchBase:
         """
         return ['train', 'val', 'test']
 
+    def available_budgets(self, dataset: Optional[str] = None,
+                          split: Optional[str] = None) -> Optional[List[Any]]:
+        """Return known training budgets for the given dataset/split.
+
+        Args:
+            dataset: Dataset name to query.
+            split: Optional split hint (unused by default).
+
+        Returns:
+            List of available budgets or None if budgets are not tracked.
+        """
+        return None
+
     # Common architecture I/O surface
     def decode(self, encoding: Any) -> Any:
         """Decode native encoding into an architecture object.
@@ -126,3 +139,46 @@ class NASBenchBase:
             Mutated architecture.
         """
         raise NotImplementedError
+
+    # Existence checks
+    def exists(self, dataset: Optional[str] = None, split: Optional[str] = None,
+               budget: Optional[Any] = None, arch: Optional[Any] = None) -> bool:
+        """Check whether the provided query components are supported.
+
+        Args:
+            dataset: Dataset name to validate.
+            split: Split name to validate.
+            budget: Training budget/epoch identifier.
+            arch: Architecture candidate.
+
+        Returns:
+            True if all specified components are supported, False otherwise.
+        """
+        if dataset is not None and dataset not in self.datasets():
+            return False
+
+        if split is not None:
+            target_dataset = dataset
+            if target_dataset is None:
+                datasets = self.datasets()
+                target_dataset = datasets[0] if datasets else None
+            try:
+                supported_splits = self.splits(target_dataset) if target_dataset else []
+            except Exception:
+                supported_splits = []
+            if split not in supported_splits:
+                return False
+
+        if budget is not None:
+            budgets = self.available_budgets(dataset, split)
+            if budgets is not None and budget not in budgets:
+                return False
+
+        if arch is not None:
+            return self._supports_arch(arch)
+
+        return True
+
+    def _supports_arch(self, arch: Any) -> bool:
+        """Override in subclasses to validate architectures."""
+        return True

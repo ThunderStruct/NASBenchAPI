@@ -63,11 +63,10 @@ class NASBench201:
                 self.data = pickle.load(f)
                 if self.verbose:
                     print("Unpickling complete.")
-        if self.verbose:
-            size_info = 'dict' if isinstance(self.data, dict) else type(self.data).__name__
-            print(f"Loaded NB201 data ({size_info})")
+        size_info = 'dict' if isinstance(self.data, dict) else type(self.data).__name__
 
         # Cache architecture keys if data is a dict
+        fallback_keys = None
         if isinstance(self.data, dict):
             # Check if this is the official NB201 format with nested structure
             # Official format has: meta_archs, arch2infos, evaluated_indexes, etc.
@@ -75,8 +74,6 @@ class NASBench201:
                 # Use arch2infos for architecture data
                 # Ensure indices are integers
                 self._arch_keys = [int(k) for k in self.data['arch2infos'].keys()]
-                if self.verbose:
-                    print(f"Found {len(self._arch_keys)} architectures in NB201")
                 # Build index<->arch_str mappings when available
                 try:
                     for k in self._arch_keys:
@@ -94,11 +91,14 @@ class NASBench201:
             else:
                 # Fallback to top-level keys
                 self._arch_keys = list(self.data.keys())
-                if self.verbose:
-                    print(f"Found {len(self._arch_keys)} entries in NB201")
-                    if len(self._arch_keys) < 100:
-                        print(f"  Top-level keys: {self._arch_keys}")
-                        print(f"  Note: These may be metadata keys, not architectures")
+                fallback_keys = self._arch_keys if len(self._arch_keys) < 100 else None
+
+        arch_count = len(self._arch_keys)
+        if self.verbose:
+            print(f"[NB201] Loaded {arch_count} architectures")
+            if fallback_keys is not None:
+                print(f"[NB201] Note: top-level keys: {fallback_keys}")
+                print("[NB201] Note: These may be metadata keys, not architectures")
 
     def get_statistics(self) -> Dict[str, Any]:
         if isinstance(self.data, dict) and 'arch2infos' in self.data:
