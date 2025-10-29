@@ -74,9 +74,10 @@ class NASBench101(NASBenchBase):
         return self.api.mutate(arch, rng, kind)
 
     def query(self, arch: Arch101, dataset: str = 'cifar10', split: str = 'val',
-              seed: Optional[int] = None, budget: Optional[Any] = None) -> Dict[str, Any]:
+              seed: Optional[int] = None, budget: Optional[Any] = None,
+              average: bool = False, summary: bool = False) -> Any:
         """Query performance metrics for architecture."""
-        return self.api.query(arch, dataset, split, seed, budget)
+        return self.api.query(arch, dataset, split, seed, budget, average=average, summary=summary)
 
     def is_valid(self, arch: Arch101) -> bool:
         """Check if architecture is valid."""

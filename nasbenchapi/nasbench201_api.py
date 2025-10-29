@@ -3,11 +3,12 @@ import pickle
 import random
 import hashlib
 import json
+import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, Iterator
 
-from .utils import resolve_path, sizeof_fmt
+from .utils import resolve_path, sizeof_fmt, display_path
 
 try:
     # Optional import to minimize pip overhead
@@ -37,9 +38,10 @@ class NASBench201:
         self._load()
 
     def _load(self) -> None:
+        start_time = time.perf_counter()
         size = self.path.stat().st_size
         if self.verbose:
-            print(f"Loading NB201 from {self.path} ({sizeof_fmt(size)})")
+            print(f"Loading NB201 from {display_path(self.path)} ({sizeof_fmt(size)})")
         with open(self.path, 'rb') as f:
             if HAS_TQDM and self.verbose and size > 0:
                 bar = tqdm(total=size, unit='B', unit_scale=True, desc='Reading')
@@ -95,7 +97,8 @@ class NASBench201:
 
         arch_count = len(self._arch_keys)
         if self.verbose:
-            print(f"[NB201] Loaded {arch_count} architectures")
+            elapsed = time.perf_counter() - start_time
+            print(f"[NB201] Loaded {arch_count} architectures in {elapsed:.2f}s")
             if fallback_keys is not None:
                 print(f"[NB201] Note: top-level keys: {fallback_keys}")
                 print("[NB201] Note: These may be metadata keys, not architectures")

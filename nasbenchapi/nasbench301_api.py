@@ -3,11 +3,12 @@ import pickle
 import random
 import hashlib
 import json
+import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, Iterator, Tuple
 
-from .utils import resolve_path, sizeof_fmt
+from .utils import resolve_path, sizeof_fmt, display_path
 
 try:
     # Optional import to minimize pip overhead
@@ -41,9 +42,10 @@ class NASBench301:
         self._load()
 
     def _load(self) -> None:
+        start_time = time.perf_counter()
         size = self.path.stat().st_size
         if self.verbose:
-            print(f"Loading NB301 from {self.path} ({sizeof_fmt(size)})")
+            print(f"Loading NB301 from {display_path(self.path)} ({sizeof_fmt(size)})")
         with open(self.path, 'rb') as f:
             if HAS_TQDM and self.verbose and size > 0:
                 bar = tqdm(total=size, unit='B', unit_scale=True, desc='Reading')
@@ -91,10 +93,11 @@ class NASBench301:
         if entry_count is None:
             entry_count = loaded_count if loaded_count else None
         if self.verbose:
+            elapsed = time.perf_counter() - start_time
             if loaded_count:
-                print(f"[NB301] Loaded {loaded_count} entries")
+                print(f"[NB301] Loaded {loaded_count} entries in {elapsed:.2f}s")
             else:
-                print(f"[NB301] Loaded NB301 payload")
+                print(f"[NB301] Loaded NB301 payload in {elapsed:.2f}s")
 
     def get_statistics(self) -> Dict[str, Any]:
         if isinstance(self.data, dict) and 'entries' in self.data:

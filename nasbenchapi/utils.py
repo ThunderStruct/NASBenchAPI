@@ -29,3 +29,17 @@ def sizeof_fmt(num: float) -> str:
         num /= 1024.0
     return f"{num:.1f} PB"
 
+
+def display_path(path: Path) -> str:
+    """Render a filesystem path with '~' when it lives under the user's home."""
+    try:
+        resolved = path.expanduser().resolve()
+    except FileNotFoundError:
+        resolved = path.expanduser()
+
+    home = Path.home()
+    try:
+        relative = resolved.relative_to(home)
+        return str(Path('~') / relative)
+    except ValueError:
+        return str(path)

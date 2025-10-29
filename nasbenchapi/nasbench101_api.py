@@ -1,13 +1,17 @@
 
+import base64
 import pickle
 import random
 import hashlib
 import json
+import struct
+import time
+from collections import defaultdict
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List, Iterator
+from typing import Dict, Any, Optional, List, Iterator, Tuple, Union
 
-from .utils import resolve_path, sizeof_fmt
+from .utils import resolve_path, sizeof_fmt, display_path
 
 try:
     # Optional import to minimize pip overhead
@@ -43,12 +47,14 @@ class NASBench101:
         self.path = resolve_path('101', pickle_path)
         self.verbose = verbose
         self.data: Dict[str, Any] = {}
+        self._arch_lookup: Dict[Tuple[str, str], str] = {}
         self._load()
 
     def _load(self) -> None:
+        start_time = time.perf_counter()
         size = self.path.stat().st_size
         if self.verbose:
-            print(f"Loading NB101 from {self.path} ({sizeof_fmt(size)})")
+            print(f"Loading NB101 from {display_path(self.path)} ({sizeof_fmt(size)})")
         with open(self.path, 'rb') as f:
             if HAS_TQDM and self.verbose and size > 0:
                 bar = tqdm(total=size, unit='B', unit_scale=True, desc='Reading')
@@ -79,7 +85,15 @@ class NASBench101:
                 arch_count = len(self.data.get('latest_by_arch', {}))
             records = self.data.get('num_records')
             extra = f" (records={records})" if records is not None else ""
-            print(f"[NB101] Loaded {arch_count} architectures{extra}")
+            elapsed = time.perf_counter() - start_time
+            print(f"[NB101] Loaded {arch_count} architectures{extra} in {elapsed:.2f}s")
+        latest = self.data.get('latest_by_arch', {})
+        # Cache adjacency/operations lookups for O(1) queries
+        self._arch_lookup = {
+            (entry.get('adjacency_str'), entry.get('operations_str')): key
+            for key, entry in latest.items()
+            if isinstance(entry, dict)
+        }
 
     def get_statistics(self) -> Dict[str, Any]:
         entries = self.data.get('entries_by_arch', {})
@@ -169,7 +183,9 @@ class NASBench101:
 
     # Query (renamed from evaluate)
     def query(self, arch: Arch101, dataset: str = 'cifar10', split: str = 'val',
-              seed: Optional[int] = None, budget: Optional[Any] = None) -> Dict[str, Any]:
+              seed: Optional[int] = None, budget: Optional[Any] = None,
+              average: bool = False, summary: bool = False
+              ) -> Union[Dict[str, Any], Tuple[Dict[str, Any], Dict[int, Any]]]:
         """Query performance metrics for an architecture from loaded data.
 
         Args:
@@ -178,10 +194,90 @@ class NASBench101:
             split: Split name ('val', 'test', 'train').
             seed: Optional seed for reproducibility.
             budget: Optional budget specification.
+            average: If True, average metrics across the three training runs.
+            summary: If True, return the legacy summary dict (metric/metric_name/...).
 
         Returns:
-            Dictionary with keys: metric, metric_name, cost, std, info.
+            When summary=False (default): tuple (info_dict, metrics_by_budget)
+            aligned with the original NASBench-101 API. When summary=True, the
+            condensed dictionary from prior versions is returned for backwards
+            compatibility.
         """
+        if summary:
+            return self._query_summary(arch, dataset, split, seed, budget)
+
+        enc = self.encode(arch)
+        key = self._arch_lookup.get((enc['adjacency_str'], enc['operations_str']))
+        if key is None:
+            # Fallback: linear scan (should rarely trigger, but keeps parity with previous behaviour)
+            latest = self.data.get('latest_by_arch', {})
+            for k, last in latest.items():
+                if (last.get('adjacency_str') == enc['adjacency_str'] and
+                        last.get('operations_str') == enc['operations_str']):
+                    key = k
+                    break
+        if key is None:
+            info = {
+                'module_adjacency': arch.adjacency,
+                'module_operations': arch.operations,
+                'module_hash': None,
+                'trainable_parameters': None,
+                'training_time': None,
+            }
+            return info, {}
+
+        entries = self.data.get('entries_by_arch', {}).get(key, [])
+        if not entries:
+            info = {
+                'module_adjacency': arch.adjacency,
+                'module_operations': arch.operations,
+                'module_hash': key,
+                'trainable_parameters': None,
+                'training_time': None,
+            }
+            return info, {}
+
+        metrics_by_budget: Dict[int, List[Dict[str, Optional[float]]]] = defaultdict(list)
+        trainable_parameters: Optional[float] = None
+        total_training_time: List[float] = []
+
+        for record in entries:
+            epoch = int(record.get('epoch', 0))
+            decoded = self._decode_metrics(record)
+            if not decoded:
+                continue
+            metrics_by_budget[epoch].append(decoded)
+            final_time = decoded.get('final_training_time')
+            if final_time is not None:
+                total_training_time.append(final_time)
+            if trainable_parameters is None:
+                derived = record.get('derived', {})
+                tp = derived.get('trainable_parameters')
+                if tp is not None:
+                    trainable_parameters = float(tp)
+
+        info = {
+            'module_adjacency': arch.adjacency,
+            'module_operations': arch.operations,
+            'module_hash': key,
+            'trainable_parameters': trainable_parameters,
+            'training_time': float(sum(total_training_time) / len(total_training_time))
+            if total_training_time else None,
+        }
+
+        # Ensure deterministic ordering by sorting budget keys
+        ordered_metrics: Dict[int, Any] = {}
+        for epoch in sorted(metrics_by_budget.keys()):
+            runs = metrics_by_budget[epoch]
+            if average:
+                ordered_metrics[epoch] = self._average_metrics(runs)
+            else:
+                ordered_metrics[epoch] = runs
+
+        return info, ordered_metrics
+
+    def _query_summary(self, arch: Arch101, dataset: str = 'cifar10', split: str = 'val',
+                       seed: Optional[int] = None, budget: Optional[Any] = None) -> Dict[str, Any]:
         enc = self.encode(arch)
         latest = self.data.get('latest_by_arch', {})
 
@@ -219,6 +315,121 @@ class NASBench101:
             'std': None,
             'info': info,
         }
+
+    @staticmethod
+    def _decode_metrics(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
+        """Decode the base64 metrics blob into halfway/final metrics."""
+        metrics_b64 = record.get('metrics_b64')
+        if not metrics_b64:
+            return {}
+
+        try:
+            raw = base64.b64decode(metrics_b64)
+        except Exception:
+            return {}
+
+        steps: Dict[int, Dict[int, float]] = {}
+        idx = 0
+        length = len(raw)
+        while idx < length:
+            tag = raw[idx]
+            idx += 1
+            if tag != 0x0A:  # Expecting length-delimited field
+                continue
+            chunk_len, shift = NASBench101._read_varint(raw, idx)
+            idx += shift
+            chunk = raw[idx:idx + chunk_len]
+            idx += chunk_len
+            if not chunk:
+                continue
+
+            cursor = 0
+            fields: Dict[int, float] = {}
+            while cursor < len(chunk):
+                field_tag = chunk[cursor]
+                cursor += 1
+                field_number = field_tag >> 3
+                wire_type = field_tag & 0x7
+                if wire_type == 1:  # 64-bit
+                    if cursor + 8 > len(chunk):
+                        break
+                    value = struct.unpack('<d', chunk[cursor:cursor + 8])[0]
+                    cursor += 8
+                elif wire_type == 5:  # 32-bit
+                    if cursor + 4 > len(chunk):
+                        break
+                    value = float(struct.unpack('<f', chunk[cursor:cursor + 4])[0])
+                    cursor += 4
+                else:
+                    # Unsupported wire type; stop parsing this chunk
+                    break
+                fields[field_number] = value
+            if 1 in fields:
+                step_key = int(round(fields[1]))
+                steps[step_key] = fields
+
+        epoch = int(record.get('epoch', 0))
+        halfway = epoch // 2 if epoch else None
+
+        def extract(step: Optional[Dict[int, float]]) -> Dict[str, Optional[float]]:
+            if not step:
+                return {
+                    'training_time': None,
+                    'train_accuracy': None,
+                    'validation_accuracy': None,
+                    'test_accuracy': None,
+                }
+            return {
+                'training_time': float(step.get(2)) if step.get(2) is not None else None,
+                'train_accuracy': float(step.get(3)) if step.get(3) is not None else None,
+                'validation_accuracy': float(step.get(4)) if step.get(4) is not None else None,
+                'test_accuracy': float(step.get(5)) if step.get(5) is not None else None,
+            }
+
+        halfway_metrics = extract(steps.get(halfway)) if halfway is not None else extract(None)
+        final_metrics = extract(steps.get(epoch))
+
+        return {
+            'halfway_training_time': halfway_metrics['training_time'],
+            'halfway_train_accuracy': halfway_metrics['train_accuracy'],
+            'halfway_validation_accuracy': halfway_metrics['validation_accuracy'],
+            'halfway_test_accuracy': halfway_metrics['test_accuracy'],
+            'final_training_time': final_metrics['training_time'],
+            'final_train_accuracy': final_metrics['train_accuracy'],
+            'final_validation_accuracy': final_metrics['validation_accuracy'],
+            'final_test_accuracy': final_metrics['test_accuracy'],
+        }
+
+    @staticmethod
+    def _read_varint(buffer: bytes, offset: int) -> Tuple[int, int]:
+        """Read a little-endian varint from buffer starting at offset.
+
+        Returns:
+            Tuple (value, bytes_consumed).
+        """
+        result = 0
+        shift = 0
+        idx = offset
+        while idx < len(buffer):
+            byte = buffer[idx]
+            idx += 1
+            result |= (byte & 0x7F) << shift
+            if not byte & 0x80:
+                return result, idx - offset
+            shift += 7
+        return result, idx - offset
+
+    @staticmethod
+    def _average_metrics(runs: List[Dict[str, Optional[float]]]) -> Dict[str, Optional[float]]:
+        """Average metric dictionaries while ignoring missing values."""
+        if not runs:
+            return {}
+        keys = runs[0].keys()
+        averaged: Dict[str, Optional[float]] = {}
+        for key in keys:
+            values = [r[key] for r in runs if r.get(key) is not None]
+            averaged[key] = float(sum(values) / len(values)) if values else None
+        return averaged
 
     def is_valid(self, arch: Arch101) -> bool:
         """Check if architecture is valid."""
