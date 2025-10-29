@@ -302,15 +302,23 @@ Query performance metrics for an architecture from loaded data.
 
 **Return Value Details:**
 
-- ``metric``: Accuracy percentage (e.g., 94.5) or None if not available
-- ``metric_name``: Describes the metric, typically '{split}_acc'
-- ``cost``: Training/evaluation time in seconds, or None
-- ``std``: Standard deviation of the metric across multiple runs (rarely used)
-- ``info``: Dictionary containing additional information:
+- **NB101**: Returns a tuple ``(info_dict, metrics_by_budget)`` by default.
 
-  - **NB201**: arch_index, dataset, split, seed, epoch, arch_str, params, flop
-  - **NB101**: Full raw record from the benchmark
-  - **NB301**: Entry metadata (index, dataset, epochs available/used, declared budget, optimizer tag, JSON path)
+  - ``info_dict`` contains ``module_adjacency``, ``module_operations``, ``module_hash``, and aggregate training metadata.
+  - ``metrics_by_budget`` is a dict keyed by epoch budgets (4/12/36/108), where each value is a list of up to three run dictionaries. Each run dictionary mirrors the native NASBench metrics: ``halfway_*`` and ``final_*`` keys as well as training times.
+  - ``average=True`` collapses each budget to a single averaged metrics dictionary.
+  - ``summary=True`` restores the condensed dict (``metric``, ``metric_name``, ``cost``, ``std``, ``info``) for backwards compatibility.
+
+- **NB201 / NB301**: Return a dictionary with keys:
+
+  - ``metric``: Accuracy percentage (e.g., 94.5) or None if not available
+  - ``metric_name``: Describes the metric, typically ``{split}_acc``
+  - ``cost``: Training/evaluation time in seconds, or None
+  - ``std``: Standard deviation of the metric across multiple runs (rarely used)
+  - ``info``: Dictionary containing additional information
+
+    - **NB201**: arch_index, dataset, split, seed, epoch, arch_str, params, flop
+    - **NB301**: Entry metadata (index, dataset, epochs available/used, declared budget, optimizer tag, JSON path)
 
 NASBench-101 Specifics
 ------------------------
@@ -403,7 +411,10 @@ query
 
 .. code-block:: python
 
-   result = api.query(arch, dataset='cifar10', split='val')
+   info, metrics = api.query(arch, dataset='cifar10', split='val')
+   # metrics -> {4: [run_dict, ...], 12: [...], 36: [...], 108: [...]}
+   averaged = api.query(arch, dataset='cifar10', split='val', average=True)[1]
+   summary = api.query(arch, dataset='cifar10', split='val', summary=True)
 
 **Args:**
 
@@ -411,9 +422,14 @@ query
 - ``dataset``: str — 'cifar10' (only dataset available)
 - ``split``: str — 'train', 'val', or 'test'
 - ``seed``: Optional[int] — unused
-- ``budget``: Optional[Any] — unused (always uses final epoch data)
+- ``budget``: Optional[Any] — unused (all budgets available in ``metrics``)
+- ``average``: Optional[bool] — return averaged metrics per budget when True
+- ``summary``: Optional[bool] — return condensed dict (legacy shape) when True
 
-**Returns:** dict with keys: metric, metric_name, cost, std, info
+**Returns:**
+
+- Tuple ``(info_dict, metrics_by_budget)`` when ``summary=False`` (default)
+- Condensed dict when ``summary=True``
 
 train_time
 ~~~~~~~~~~
