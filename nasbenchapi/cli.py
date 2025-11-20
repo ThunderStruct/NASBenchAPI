@@ -12,7 +12,7 @@ except ImportError:
     HAS_TQDM = False
 
 FIGSHARE_URLS = {
-    '101': 'https://figshare.com/ndownloader/files/58862740',
+    '101': 'https://figshare.com/ndownloader/files/59722685',
     '201': 'https://figshare.com/ndownloader/files/58862743',
     '301': 'https://figshare.com/ndownloader/files/58862737',
 }

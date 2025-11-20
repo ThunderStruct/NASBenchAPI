@@ -246,7 +246,7 @@ Alternatively, manually download the Pickle-based benchmarks through the followi
 
 | Benchmark | Download Link |
 |-----------|---------------|
-| **NASBench-101** | [Figshare Link](https://figshare.com/ndownloader/files/58862740) |
+| **NASBench-101** | [Figshare Link](https://figshare.com/ndownloader/files/59722685) |
 | **NASBench-201** | [Figshare Link](https://figshare.com/ndownloader/files/58862743) |
 | **NASBench-301** | [Figshare Link](https://figshare.com/ndownloader/files/58862737) |
 

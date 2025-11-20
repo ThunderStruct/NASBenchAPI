@@ -29,11 +29,20 @@ def _hash_arch(payload: Dict[str, Any]) -> str:
     return h.hexdigest()
 
 
-@dataclass
+@dataclass(frozen=True)
 class Arch101:
-    """NASBench-101 architecture representation."""
-    adjacency: List[List[int]]  # 7x7 adjacency matrix
-    operations: List[str]  # 7 operations
+    """NASBench-101 architecture representation (immutable & hashable)."""
+    adjacency: Tuple[Tuple[int, ...], ...]
+    operations: Tuple[str, ...]
+
+    def __init__(self, adjacency: List[List[int]], operations: List[str]):
+        # Convert any mutable lists to immutable tuples for hashing
+        object.__setattr__(self, 'adjacency', tuple(tuple(row) for row in adjacency))
+        object.__setattr__(self, 'operations', tuple(operations))
+
+    def to_lists(self) -> Tuple[List[List[int]], List[str]]:
+        """Convert back to mutable lists (for APIs that need them)."""
+        return [list(row) for row in self.adjacency], list(self.operations)
 
 
 class NASBench101:
@@ -113,8 +122,20 @@ class NASBench101:
         """Decode adjacency/operations strings into an Arch101 object."""
         adj_str = encoding['adjacency_str']
         ops_str = encoding['operations_str']
-        mat = [[int(adj_str[r * 7 + c]) for c in range(7)] for r in range(7)]
         ops = ops_str.split(',')
+
+        # Infer matrix dimension from adjacency string length
+        length = len(adj_str)
+        dim = int(length ** 0.5)
+        if dim * dim != length:
+            raise ValueError(f"Invalid adjacency_str length {length}; expected a perfect square")
+
+        if len(ops) != dim:
+            raise ValueError(
+                f"Mismatch between adjacency dim ({dim}) and number of ops ({len(ops)})"
+            )
+
+        mat = [[int(adj_str[r * dim + c]) for c in range(dim)] for r in range(dim)]
         return Arch101(adjacency=mat, operations=ops)
 
     def encode(self, arch: Arch101) -> Dict[str, str]:
@@ -167,15 +188,19 @@ class NASBench101:
     def mutate(self, arch: Arch101, rng: random.Random, kind: Optional[str] = None) -> Arch101:
         """Apply a simple one-edit mutation (edge toggle or op swap)."""
         kind = kind or 'edge_toggle'
+        n = len(arch.adjacency)
+        if n <= 1:
+            return arch
+
         if kind == 'edge_toggle':
-            r, c = rng.randrange(7), rng.randrange(7)
+            r, c = rng.randrange(n), rng.randrange(n)
             if r == c:
                 return arch
             new_adj = [row[:] for row in arch.adjacency]
             new_adj[r][c] = 1 - new_adj[r][c]
             return Arch101(new_adj, arch.operations[:])
         if kind == 'op_swap':
-            i, j = rng.randrange(7), rng.randrange(7)
+            i, j = rng.randrange(n), rng.randrange(n)
             new_ops = arch.operations[:]
             new_ops[i], new_ops[j] = new_ops[j], new_ops[i]
             return Arch101([row[:] for row in arch.adjacency], new_ops)
@@ -433,9 +458,12 @@ class NASBench101:
 
     def is_valid(self, arch: Arch101) -> bool:
         """Check if architecture is valid."""
-        return (len(arch.adjacency) == 7 and
-                all(len(r) == 7 for r in arch.adjacency) and
-                len(arch.operations) == 7)
+        n = len(arch.adjacency)
+        return (
+            n >= 2
+            and all(len(row) == n for row in arch.adjacency)
+            and len(arch.operations) == n
+        )
 
     def train_time(self, arch: Arch101, dataset: str = 'cifar10') -> Optional[float]:
         """Get training time for an architecture."""
