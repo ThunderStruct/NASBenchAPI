@@ -1,7 +1,56 @@
 """Base class for all NAS benchmarks."""
 
 import random
+from dataclasses import dataclass
+from importlib import resources
+import json
 from typing import List, Dict, Any, Optional, Iterator
+
+
+@dataclass(frozen=True)
+class DatasetInfo:
+    """Metadata describing a dataset used by a NAS benchmark."""
+
+    name: str
+    modality: str
+    input_shape: tuple
+    num_classes: int
+
+
+def get_dataset_info(benchmark: str,
+                     dataset: Optional[str] = None) -> DatasetInfo:
+    """Return packaged metadata without loading a benchmark pickle."""
+    benchmark = str(benchmark)
+    if not benchmark.startswith('nb'):
+        benchmark = f'nb{benchmark}'
+
+    with resources.open_text('nasbenchapi.metadata',
+                             'datasets.json',
+                             encoding='utf-8') as metadata_file:
+        metadata = json.load(metadata_file)
+
+    if benchmark not in metadata:
+        raise ValueError(f'Unsupported benchmark {benchmark!r}')
+
+    available = metadata[benchmark]
+    if dataset is None:
+        if len(available) != 1:
+            raise ValueError(
+                'A dataset must be provided when a benchmark contains '
+                'multiple datasets'
+            )
+        dataset = next(iter(available))
+
+    if dataset not in available:
+        raise ValueError(
+            f'Unsupported dataset {dataset!r} for {benchmark}'
+        )
+
+    descriptor = available[dataset]
+    return DatasetInfo(name=dataset,
+                       modality=descriptor['modality'],
+                       input_shape=tuple(descriptor['input_shape']),
+                       num_classes=descriptor['num_classes'])
 
 
 class NASBenchBase:
@@ -46,6 +95,22 @@ class NASBenchBase:
             List of dataset names (e.g., ['cifar10']).
         """
         return ['cifar10']
+
+    def dataset_info(self, dataset: Optional[str] = None) -> DatasetInfo:
+        """Return the descriptor for a benchmark dataset.
+
+        Args:
+            dataset: Dataset name. It may be omitted when the benchmark has
+                only one dataset.
+
+        Returns:
+            Dataset descriptor loaded from the packaged benchmark metadata.
+        """
+        if dataset is not None and dataset not in self.datasets():
+            raise ValueError(
+                f'Unsupported dataset {dataset!r} for {self.bench_name()}'
+            )
+        return get_dataset_info(self.bench_name(), dataset)
 
     def splits(self, dataset: str) -> List[str]:
         """Return supported splits for a dataset.

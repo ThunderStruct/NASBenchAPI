@@ -1,0 +1,38 @@
+{
+  "nb101": {
+    "cifar10": {
+      "modality": "image_classification",
+      "input_shape": [3, 32, 32],
+      "num_classes": 10
+    }
+  },
+  "nb201": {
+    "cifar10": {
+      "modality": "image_classification",
+      "input_shape": [3, 32, 32],
+      "num_classes": 10
+    },
+    "cifar100": {
+      "modality": "image_classification",
+      "input_shape": [3, 32, 32],
+      "num_classes": 100
+    },
+    "ImageNet16-120": {
+      "modality": "image_classification",
+      "input_shape": [3, 16, 16],
+      "num_classes": 120
+    }
+  },
+  "nb301": {
+    "cifar10": {
+      "modality": "image_classification",
+      "input_shape": [3, 32, 32],
+      "num_classes": 10
+    },
+    "cifar100": {
+      "modality": "image_classification",
+      "input_shape": [3, 32, 32],
+      "num_classes": 100
+    }
+  }
+}
