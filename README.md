@@ -1,7 +1,7 @@
 
 # NASBenchAPI
 
-[![pypi](https://img.shields.io/badge/pypi%20package-1.0.4-lightgrey.svg)](https://pypi.org/project/nasbenchapi/) [![Platform](https://img.shields.io/badge/python-v3.8+-green)](https://github.com/ThunderStruct/NASBenchAPI) [![License](https://img.shields.io/badge/license-MIT-orange)](https://github.com/ThunderStruct/NASBenchAPI/blob/main/LICENSE) [![Read the Docs](https://readthedocs.org/projects/nasbenchapi/badge/?version=latest)](https://nasbenchapi.readthedocs.io/en/latest/)
+[![pypi](https://img.shields.io/badge/pypi%20package-1.0.5-lightgrey.svg)](https://pypi.org/project/nasbenchapi/) [![Platform](https://img.shields.io/badge/python-v3.8+-green)](https://github.com/ThunderStruct/NASBenchAPI) [![License](https://img.shields.io/badge/license-MIT-orange)](https://github.com/ThunderStruct/NASBenchAPI/blob/main/LICENSE) [![Read the Docs](https://readthedocs.org/projects/nasbenchapi/badge/?version=latest)](https://nasbenchapi.readthedocs.io/en/latest/)
 
 
 A unified, lightweight interface for NASBench-101, 201, and 301 with optimized Pickle-based datasets.
@@ -246,9 +246,9 @@ Alternatively, manually download the Pickle-based benchmarks through the followi
 
 | Benchmark | Download Link |
 |-----------|---------------|
-| **NASBench-101** | [Figshare Link](https://figshare.com/ndownloader/files/59722685) |
-| **NASBench-201** | [Figshare Link](https://figshare.com/ndownloader/files/58862743) |
-| **NASBench-301** | [Figshare Link](https://figshare.com/ndownloader/files/58862737) |
+| **NASBench-101** | [Hugging Face Link](https://huggingface.co/datasets/ThunderStruct/NASBench/resolve/main/nasbench101_full.pkl) |
+| **NASBench-201** | [Hugging Face Link](https://huggingface.co/datasets/ThunderStruct/NASBench/resolve/main/nasbench201_v1_0-e61699.pkl) |
+| **NASBench-301** | [Hugging Face Link](https://huggingface.co/datasets/ThunderStruct/NASBench/resolve/main/nasbench301.pkl) |
 
 
 ### Documentation

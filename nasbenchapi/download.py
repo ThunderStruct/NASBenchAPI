@@ -13,10 +13,14 @@ except ImportError:
     HAS_TQDM = False
 
 
-FIGSHARE_URLS = {
-    '101': 'https://figshare.com/ndownloader/files/59722685',
-    '201': 'https://figshare.com/ndownloader/files/58862743',
-    '301': 'https://figshare.com/ndownloader/files/58862737',
+HUGGINGFACE_REPOSITORY = (
+    'https://huggingface.co/datasets/ThunderStruct/NASBench/resolve/main'
+)
+
+DOWNLOAD_URLS = {
+    '101': f'{HUGGINGFACE_REPOSITORY}/nasbench101_full.pkl',
+    '201': f'{HUGGINGFACE_REPOSITORY}/nasbench201_v1_0-e61699.pkl',
+    '301': f'{HUGGINGFACE_REPOSITORY}/nasbench301.pkl',
 }
 
 ENV_VARS = {
@@ -30,7 +34,7 @@ def resolve_download_path(benchmark: str,
                           output: Optional[str] = None) -> Path:
     """Resolve the destination for a benchmark download."""
     benchmark = str(benchmark)
-    if benchmark not in FIGSHARE_URLS:
+    if benchmark not in DOWNLOAD_URLS:
         raise ValueError(
             f'Invalid benchmark {benchmark!r}. Choose from 101, 201, 301.'
         )
@@ -79,5 +83,5 @@ def download_benchmark(benchmark: str,
     if destination.exists() and not force:
         return destination
 
-    _download(FIGSHARE_URLS[benchmark], destination)
+    _download(DOWNLOAD_URLS[benchmark], destination)
     return destination

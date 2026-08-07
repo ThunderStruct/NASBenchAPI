@@ -33,7 +33,7 @@ def main(argv: Optional[list] = None) -> None:
 
     print(f"Target file: {out_path}")
     if not _prompt_yes_no(
-            f"Download NASBench-{bench} from Figshare to this location?"):
+            f"Download NASBench-{bench} from Hugging Face to this location?"):
         print("Aborted by user.")
         sys.exit(0)
 
